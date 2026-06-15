@@ -6,20 +6,30 @@ import { getSocket, isSocketConnected } from "../../bot/connection.js";
 import { getStaff } from "../../bot/db/queries.js";
 import { logger } from "../../lib/logger.js";
 
-// Get image URL — prefers stored blob, falls back to Shoob CDN
+// Get image URL — prefers stored blob, falls back through all CDN paths
 function getCardImageUrl(card: any): string {
+  // 1. Stored blob (custom / manually uploaded cards)
   if (card.image_data) return `/api/v1/cards/${card.id}/image`;
+
+  // 2. Parse raw_data JSON for media_url or _id
+  let rawObj: any = null;
   try {
     if (card.raw_data) {
-      const raw = typeof card.raw_data === "string" ? JSON.parse(card.raw_data) : card.raw_data;
-      if (raw?.media_url) return raw.media_url;
-      const id = card.shoob_id || raw?._id;
-      if (id) {
-        if (raw?.has_webm) return `https://api.shoob.gg/site/api/cardr/${id}?type=webm`;
-        return `https://api.shoob.gg/site/api/cardr/${id}?size=400`;
-      }
+      rawObj = typeof card.raw_data === "string" ? JSON.parse(card.raw_data) : card.raw_data;
     }
   } catch {}
+
+  // 3. Direct media_url stored in raw_data (set by cards-loader from cards.json)
+  if (rawObj?.media_url) return rawObj.media_url;
+
+  // 4. Build CDN URL from shoob_id (on card itself, or inside raw_data)
+  const shoobId = card.shoob_id || rawObj?._id || rawObj?.id;
+  if (shoobId) {
+    const hasWebm = card.has_webm || rawObj?.has_webm;
+    if (hasWebm) return `https://api.shoob.gg/site/api/cardr/${shoobId}?type=webm`;
+    return `https://api.shoob.gg/site/api/cardr/${shoobId}?size=400`;
+  }
+
   return "";
 }
 
